@@ -1,0 +1,94 @@
+.question-container,
+.content {
+    width: 80%; /* 원하는 너비로 조정 */
+    margin: 0 auto; /* 가운데 정렬 */
+}
+
+h3 {
+    margin-top: 10px; /* 원하는 값으로 변경할 수 있습니다 */
+}
+
+.hidden {
+    display: none;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #f0f0f0;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    text-align: center;
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    font-size: 36px;
+    margin: 0;
+    margin-bottom: 10px;
+}
+
+p {
+    font-size: 18px;
+    margin: 0;
+    margin-bottom: 20px;
+}
+
+button {
+    display: block;
+    margin: 0 auto;
+    padding: 10px 20px;
+    font-size: 18px;
+    background-color: #007bff;
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+/* 문제 그룹의 스타일 조정 */
+.question-group {
+    overflow: auto;
+    max-height: 80vh; /* 내용이 화면의 80%를 넘지 않도록 설정 */
+    width: 100%; /* 가로 폭 100%로 설정 */
+    padding: 15px; /* 내부 여백 추가 */
+}
+
+.question-group.hidden{
+    overflow: auto;
+    max-height: 80vh; /* 내용이 화면의 80%를 넘지 않도록 설정 */
+    width: 100%; /* 가로 폭 100%로 설정 */
+    box-sizing: border-box; /* 내부 여백과 테두리까지 포함하여 전체 너비 설정 */
+    padding: 15px; /* 내부 여백 추가 */
+}
+
+/* 문제 제목 스타일 조정 */
+.question-group h2 {
+    font-size: 24px; /* 문제 제목의 글꼴 크기를 조정 */
+    margin-bottom: 10px; /* 문제 제목과 문제 사이의 간격 추가 */
+}
+
+/* 각 질문 항목의 스타일 조정 */
+.question-container {
+    /* 이전 스타일 유지 */
+    margin-bottom: 15px; /* 각 질문 항목 사이의 간격 추가 */
+}
+
+.button-container {
+    display: flex;
+    justify-content: center; /* 가로 가운데 정렬 */
+    align-items: center; /* 세로 가운데 정렬 */
+}
