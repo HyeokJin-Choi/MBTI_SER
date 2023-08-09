@@ -1,11 +1,22 @@
+
 /*!
- * express
- * Copyright(c) 2009-2013 TJ Holowaychuk
- * Copyright(c) 2013 Roman Shtylman
- * Copyright(c) 2014-2015 Douglas Christopher Wilson
- * MIT Licensed
+ * Module exports.
  */
 
 'use strict';
 
-module.exports = require('./lib/express');
+exports.Array = require('./array');
+exports.Buffer = require('./buffer');
+
+exports.Document = // @deprecate
+exports.Embedded = require('./ArraySubdocument');
+
+exports.DocumentArray = require('./DocumentArray');
+exports.Decimal128 = require('./decimal128');
+exports.ObjectId = require('./objectid');
+
+exports.Map = require('./map');
+
+exports.Subdocument = require('./subdocument');
+
+exports.UUID = require('./uuid');
