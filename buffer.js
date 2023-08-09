@@ -4,274 +4,287 @@
 
 'use strict';
 
-const Binary = require('bson').Binary;
+const MongooseBuffer = require('../types/buffer');
+const SchemaBufferOptions = require('../options/SchemaBufferOptions');
+const SchemaType = require('../schematype');
+const handleBitwiseOperator = require('./operators/bitwise');
 const utils = require('../utils');
 
+const Binary = MongooseBuffer.Binary;
+const CastError = SchemaType.CastError;
+
 /**
- * Mongoose Buffer constructor.
+ * Buffer SchemaType constructor
  *
- * Values always have to be passed to the constructor to initialize.
- *
- * @param {Buffer} value
- * @param {String} encode
- * @param {Number} offset
- * @api private
- * @inherits Buffer https://nodejs.org/api/buffer.html
- * @see https://bit.ly/f6CnZU
+ * @param {String} key
+ * @param {Object} options
+ * @inherits SchemaType
+ * @api public
  */
 
-function MongooseBuffer(value, encode, offset) {
-  let val = value;
-  if (value == null) {
-    val = 0;
-  }
-
-  let encoding;
-  let path;
-  let doc;
-
-  if (Array.isArray(encode)) {
-    // internal casting
-    path = encode[0];
-    doc = encode[1];
-  } else {
-    encoding = encode;
-  }
-
-  let buf;
-  if (typeof val === 'number' || val instanceof Number) {
-    buf = Buffer.alloc(val);
-  } else { // string, array or object { type: 'Buffer', data: [...] }
-    buf = Buffer.from(val, encoding, offset);
-  }
-  utils.decorate(buf, MongooseBuffer.mixin);
-  buf.isMongooseBuffer = true;
-
-  // make sure these internal props don't show up in Object.keys()
-  buf[MongooseBuffer.pathSymbol] = path;
-  buf[parentSymbol] = doc;
-
-  buf._subtype = 0;
-  return buf;
+function SchemaBuffer(key, options) {
+  SchemaType.call(this, key, options, 'Buffer');
 }
 
-const pathSymbol = Symbol.for('mongoose#Buffer#_path');
-const parentSymbol = Symbol.for('mongoose#Buffer#_parent');
-MongooseBuffer.pathSymbol = pathSymbol;
+/**
+ * This schema type's name, to defend against minifiers that mangle
+ * function names.
+ *
+ * @api public
+ */
+SchemaBuffer.schemaName = 'Buffer';
+
+SchemaBuffer.defaultOptions = {};
 
 /*!
- * Inherit from Buffer.
+ * Inherits from SchemaType.
+ */
+SchemaBuffer.prototype = Object.create(SchemaType.prototype);
+SchemaBuffer.prototype.constructor = SchemaBuffer;
+SchemaBuffer.prototype.OptionsConstructor = SchemaBufferOptions;
+
+/*!
+ * ignore
  */
 
-MongooseBuffer.mixin = {
+SchemaBuffer._checkRequired = v => !!(v && v.length);
 
-  /**
-   * Default subtype for the Binary representing this Buffer
-   *
-   * @api private
-   * @property _subtype
-   * @memberOf MongooseBuffer.mixin
-   * @static
-   */
+/**
+ * Sets a default option for all Buffer instances.
+ *
+ * #### Example:
+ *
+ *     // Make all buffers have `required` of true by default.
+ *     mongoose.Schema.Buffer.set('required', true);
+ *
+ *     const User = mongoose.model('User', new Schema({ test: Buffer }));
+ *     new User({ }).validateSync().errors.test.message; // Path `test` is required.
+ *
+ * @param {String} option The option you'd like to set the value for
+ * @param {Any} value value for option
+ * @return {undefined}
+ * @function set
+ * @static
+ * @api public
+ */
 
-  _subtype: undefined,
+SchemaBuffer.set = SchemaType.set;
 
-  /**
-   * Marks this buffer as modified.
-   *
-   * @api private
-   * @method _markModified
-   * @memberOf MongooseBuffer.mixin
-   * @static
-   */
+SchemaBuffer.setters = [];
 
-  _markModified: function() {
-    const parent = this[parentSymbol];
+/**
+ * Attaches a getter for all Buffer instances
+ *
+ * #### Example:
+ *
+ *     // Always convert to string when getting an ObjectId
+ *     mongoose.Schema.Types.Buffer.get(v => v.toString('hex'));
+ *
+ *     const Model = mongoose.model('Test', new Schema({ buf: Buffer } }));
+ *     typeof (new Model({ buf: Buffer.fromString('hello') }).buf); // 'string'
+ *
+ * @param {Function} getter
+ * @return {this}
+ * @function get
+ * @static
+ * @api public
+ */
 
-    if (parent) {
-      parent.markModified(this[MongooseBuffer.pathSymbol]);
+SchemaBuffer.get = SchemaType.get;
+
+/**
+ * Override the function the required validator uses to check whether a string
+ * passes the `required` check.
+ *
+ * #### Example:
+ *
+ *     // Allow empty strings to pass `required` check
+ *     mongoose.Schema.Types.String.checkRequired(v => v != null);
+ *
+ *     const M = mongoose.model({ buf: { type: Buffer, required: true } });
+ *     new M({ buf: Buffer.from('') }).validateSync(); // validation passes!
+ *
+ * @param {Function} fn
+ * @return {Function}
+ * @function checkRequired
+ * @static
+ * @api public
+ */
+
+SchemaBuffer.checkRequired = SchemaType.checkRequired;
+
+/**
+ * Check if the given value satisfies a required validator. To satisfy a
+ * required validator, a buffer must not be null or undefined and have
+ * non-zero length.
+ *
+ * @param {Any} value
+ * @param {Document} doc
+ * @return {Boolean}
+ * @api public
+ */
+
+SchemaBuffer.prototype.checkRequired = function(value, doc) {
+  if (SchemaType._isRef(this, value, doc, true)) {
+    return !!value;
+  }
+  return this.constructor._checkRequired(value);
+};
+
+/**
+ * Casts contents
+ *
+ * @param {Object} value
+ * @param {Document} doc document that triggers the casting
+ * @param {Boolean} init
+ * @api private
+ */
+
+SchemaBuffer.prototype.cast = function(value, doc, init) {
+  let ret;
+  if (SchemaType._isRef(this, value, doc, init)) {
+    if (value && value.isMongooseBuffer) {
+      return value;
     }
-    return this;
-  },
 
-  /**
-   * Writes the buffer.
-   *
-   * @api public
-   * @method write
-   * @memberOf MongooseBuffer.mixin
-   * @static
-   */
-
-  write: function() {
-    const written = Buffer.prototype.write.apply(this, arguments);
-
-    if (written > 0) {
-      this._markModified();
+    if (Buffer.isBuffer(value)) {
+      if (!value || !value.isMongooseBuffer) {
+        value = new MongooseBuffer(value, [this.path, doc]);
+        if (this.options.subtype != null) {
+          value._subtype = this.options.subtype;
+        }
+      }
+      return value;
     }
 
-    return written;
-  },
-
-  /**
-   * Copies the buffer.
-   *
-   * #### Note:
-   *
-   * `Buffer#copy` does not mark `target` as modified so you must copy from a `MongooseBuffer` for it to work as expected. This is a work around since `copy` modifies the target, not this.
-   *
-   * @return {Number} The number of bytes copied.
-   * @param {Buffer} target
-   * @method copy
-   * @memberOf MongooseBuffer.mixin
-   * @static
-   */
-
-  copy: function(target) {
-    const ret = Buffer.prototype.copy.apply(this, arguments);
-
-    if (target && target.isMongooseBuffer) {
-      target._markModified();
+    if (value instanceof Binary) {
+      ret = new MongooseBuffer(value.value(true), [this.path, doc]);
+      if (typeof value.sub_type !== 'number') {
+        throw new CastError('Buffer', value, this.path, null, this);
+      }
+      ret._subtype = value.sub_type;
+      return ret;
     }
 
+    if (value == null || utils.isNonBuiltinObject(value)) {
+      return this._castRef(value, doc, init);
+    }
+  }
+
+  // documents
+  if (value && value._id) {
+    value = value._id;
+  }
+
+  if (value && value.isMongooseBuffer) {
+    return value;
+  }
+
+  if (Buffer.isBuffer(value)) {
+    if (!value || !value.isMongooseBuffer) {
+      value = new MongooseBuffer(value, [this.path, doc]);
+      if (this.options.subtype != null) {
+        value._subtype = this.options.subtype;
+      }
+    }
+    return value;
+  }
+
+  if (value instanceof Binary) {
+    ret = new MongooseBuffer(value.value(true), [this.path, doc]);
+    if (typeof value.sub_type !== 'number') {
+      throw new CastError('Buffer', value, this.path, null, this);
+    }
+    ret._subtype = value.sub_type;
     return ret;
   }
+
+  if (value === null) {
+    return value;
+  }
+
+
+  const type = typeof value;
+  if (
+    type === 'string' || type === 'number' || Array.isArray(value) ||
+    (type === 'object' && value.type === 'Buffer' && Array.isArray(value.data)) // gh-6863
+  ) {
+    if (type === 'number') {
+      value = [value];
+    }
+    ret = new MongooseBuffer(value, [this.path, doc]);
+    if (this.options.subtype != null) {
+      ret._subtype = this.options.subtype;
+    }
+    return ret;
+  }
+
+  throw new CastError('Buffer', value, this.path, null, this);
+};
+
+/**
+ * Sets the default [subtype](https://studio3t.com/whats-new/best-practices-uuid-mongodb/)
+ * for this buffer. You can find a [list of allowed subtypes here](https://api.mongodb.com/python/current/api/bson/binary.html).
+ *
+ * #### Example:
+ *
+ *     const s = new Schema({ uuid: { type: Buffer, subtype: 4 });
+ *     const M = db.model('M', s);
+ *     const m = new M({ uuid: 'test string' });
+ *     m.uuid._subtype; // 4
+ *
+ * @param {Number} subtype the default subtype
+ * @return {SchemaType} this
+ * @api public
+ */
+
+SchemaBuffer.prototype.subtype = function(subtype) {
+  this.options.subtype = subtype;
+  return this;
 };
 
 /*!
- * Compile other Buffer methods marking this buffer as modified.
+ * ignore
+ */
+function handleSingle(val, context) {
+  return this.castForQuery(null, val, context);
+}
+
+SchemaBuffer.prototype.$conditionalHandlers =
+    utils.options(SchemaType.prototype.$conditionalHandlers, {
+      $bitsAllClear: handleBitwiseOperator,
+      $bitsAnyClear: handleBitwiseOperator,
+      $bitsAllSet: handleBitwiseOperator,
+      $bitsAnySet: handleBitwiseOperator,
+      $gt: handleSingle,
+      $gte: handleSingle,
+      $lt: handleSingle,
+      $lte: handleSingle
+    });
+
+/**
+ * Casts contents for queries.
+ *
+ * @param {String} $conditional
+ * @param {any} [value]
+ * @api private
  */
 
-utils.each(
-  [
-    // node < 0.5
-    'writeUInt8', 'writeUInt16', 'writeUInt32', 'writeInt8', 'writeInt16', 'writeInt32',
-    'writeFloat', 'writeDouble', 'fill',
-    'utf8Write', 'binaryWrite', 'asciiWrite', 'set',
-
-    // node >= 0.5
-    'writeUInt16LE', 'writeUInt16BE', 'writeUInt32LE', 'writeUInt32BE',
-    'writeInt16LE', 'writeInt16BE', 'writeInt32LE', 'writeInt32BE', 'writeFloatLE', 'writeFloatBE', 'writeDoubleLE', 'writeDoubleBE']
-  , function(method) {
-    if (!Buffer.prototype[method]) {
-      return;
+SchemaBuffer.prototype.castForQuery = function($conditional, val, context) {
+  let handler;
+  if ($conditional != null) {
+    handler = this.$conditionalHandlers[$conditional];
+    if (!handler) {
+      throw new Error('Can\'t use ' + $conditional + ' with Buffer.');
     }
-    MongooseBuffer.mixin[method] = function() {
-      const ret = Buffer.prototype[method].apply(this, arguments);
-      this._markModified();
-      return ret;
-    };
-  });
-
-/**
- * Converts this buffer to its Binary type representation.
- *
- * #### SubTypes:
- *
- *     const bson = require('bson')
- *     bson.BSON_BINARY_SUBTYPE_DEFAULT
- *     bson.BSON_BINARY_SUBTYPE_FUNCTION
- *     bson.BSON_BINARY_SUBTYPE_BYTE_ARRAY
- *     bson.BSON_BINARY_SUBTYPE_UUID
- *     bson.BSON_BINARY_SUBTYPE_MD5
- *     bson.BSON_BINARY_SUBTYPE_USER_DEFINED
- *     doc.buffer.toObject(bson.BSON_BINARY_SUBTYPE_USER_DEFINED);
- *
- * @see bsonspec https://bsonspec.org/#/specification
- * @param {Hex} [subtype]
- * @return {Binary}
- * @api public
- * @method toObject
- * @memberOf MongooseBuffer
- */
-
-MongooseBuffer.mixin.toObject = function(options) {
-  const subtype = typeof options === 'number'
-    ? options
-    : (this._subtype || 0);
-  return new Binary(Buffer.from(this), subtype);
-};
-
-MongooseBuffer.mixin.$toObject = MongooseBuffer.mixin.toObject;
-
-/**
- * Converts this buffer for storage in MongoDB, including subtype
- *
- * @return {Binary}
- * @api public
- * @method toBSON
- * @memberOf MongooseBuffer
- */
-
-MongooseBuffer.mixin.toBSON = function() {
-  return new Binary(this, this._subtype || 0);
-};
-
-/**
- * Determines if this buffer is equals to `other` buffer
- *
- * @param {Buffer} other
- * @return {Boolean}
- * @method equals
- * @memberOf MongooseBuffer
- */
-
-MongooseBuffer.mixin.equals = function(other) {
-  if (!Buffer.isBuffer(other)) {
-    return false;
+    return handler.call(this, val);
   }
-
-  if (this.length !== other.length) {
-    return false;
-  }
-
-  for (let i = 0; i < this.length; ++i) {
-    if (this[i] !== other[i]) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-/**
- * Sets the subtype option and marks the buffer modified.
- *
- * #### SubTypes:
- *
- *     const bson = require('bson')
- *     bson.BSON_BINARY_SUBTYPE_DEFAULT
- *     bson.BSON_BINARY_SUBTYPE_FUNCTION
- *     bson.BSON_BINARY_SUBTYPE_BYTE_ARRAY
- *     bson.BSON_BINARY_SUBTYPE_UUID
- *     bson.BSON_BINARY_SUBTYPE_MD5
- *     bson.BSON_BINARY_SUBTYPE_USER_DEFINED
- *
- *     doc.buffer.subtype(bson.BSON_BINARY_SUBTYPE_UUID);
- *
- * @see bsonspec https://bsonspec.org/#/specification
- * @param {Hex} subtype
- * @api public
- * @method subtype
- * @memberOf MongooseBuffer
- */
-
-MongooseBuffer.mixin.subtype = function(subtype) {
-  if (typeof subtype !== 'number') {
-    throw new TypeError('Invalid subtype. Expected a number');
-  }
-
-  if (this._subtype !== subtype) {
-    this._markModified();
-  }
-
-  this._subtype = subtype;
+  const casted = this.applySetters(val, context);
+  return casted ? casted.toObject({ transform: false, virtuals: false }) : casted;
 };
 
 /*!
  * Module exports.
  */
 
-MongooseBuffer.Binary = Binary;
-
-module.exports = MongooseBuffer;
+module.exports = SchemaBuffer;
